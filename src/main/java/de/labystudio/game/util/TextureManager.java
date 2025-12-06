@@ -1,15 +1,18 @@
 package de.labystudio.game.util;
 
 import org.lwjgl.BufferUtils;
+import org.lwjgl.stb.STBImage;
+import org.lwjgl.system.MemoryStack;
 
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.IntBuffer;
+import java.nio.channels.Channels;
+import java.nio.channels.ReadableByteChannel;
 
 import static org.lwjgl.opengl.GL11.*;
-import static org.lwjgl.util.glu.GLU.gluBuild2DMipmaps;
+import static org.lwjgl.opengl.GL30.glGenerateMipmap;
 
 public class TextureManager {
     private static int lastId = Integer.MIN_VALUE;
@@ -33,42 +36,59 @@ public class TextureManager {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, mode);
 
         // Read from resources
-        InputStream inputStream = TextureManager.class.getResourceAsStream(resourceName);
-
-        try {
-            // Read to buffered image
-            BufferedImage bufferedImage = ImageIO.read(inputStream);
-
-            // Get image size
-            int width = bufferedImage.getWidth();
-            int height = bufferedImage.getHeight();
-
-            // Write image pixels into array
-            int[] pixels = new int[width * height];
-            bufferedImage.getRGB(0, 0, width, height, pixels, 0, width);
-
-            // Flip RGB order of the integers
-            for (int i = 0; i < pixels.length; i++) {
-                int alpha = pixels[i] >> 24 & 0xFF;
-                int red = pixels[i] >> 16 & 0xFF;
-                int green = pixels[i] >> 8 & 0xFF;
-                int blue = pixels[i] & 0xFF;
-
-                // ARGB to ABGR
-                pixels[i] = alpha << 24 | blue << 16 | green << 8 | red;
+        try (InputStream inputStream = TextureManager.class.getResourceAsStream(resourceName)) {
+            if (inputStream == null) {
+                throw new RuntimeException("Could not find texture: " + resourceName);
             }
-
-            // Create bytebuffer from pixel array
-            ByteBuffer byteBuffer = BufferUtils.createByteBuffer(width * height * 4);
-            byteBuffer.asIntBuffer().put(pixels);
-
-            // Write texture to opengl
-            gluBuild2DMipmaps(GL_TEXTURE_2D, GL_RGBA, width, height, GL_RGBA, GL_UNSIGNED_BYTE, byteBuffer);
+            
+            // Read entire stream into buffer
+            ByteBuffer imageBuffer = readInputStream(inputStream);
+            
+            try (MemoryStack stack = MemoryStack.stackPush()) {
+                IntBuffer w = stack.mallocInt(1);
+                IntBuffer h = stack.mallocInt(1);
+                IntBuffer comp = stack.mallocInt(1);
+                
+                // Load image using STB
+                ByteBuffer image = STBImage.stbi_load_from_memory(imageBuffer, w, h, comp, 4);
+                if (image == null) {
+                    throw new RuntimeException("Failed to load texture: " + resourceName + " - " + STBImage.stbi_failure_reason());
+                }
+                
+                int width = w.get();
+                int height = h.get();
+                
+                // Upload texture to GPU
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image);
+                glGenerateMipmap(GL_TEXTURE_2D);
+                
+                // Free image memory
+                STBImage.stbi_image_free(image);
+            }
         } catch (IOException exception) {
             throw new RuntimeException("Could not load texture " + resourceName, exception);
         }
 
         return id;
+    }
+    
+    private static ByteBuffer readInputStream(InputStream input) throws IOException {
+        ByteBuffer buffer = BufferUtils.createByteBuffer(8192);
+        
+        try (ReadableByteChannel channel = Channels.newChannel(input)) {
+            while (channel.read(buffer) != -1) {
+                if (buffer.remaining() == 0) {
+                    // Resize buffer
+                    ByteBuffer newBuffer = BufferUtils.createByteBuffer(buffer.capacity() * 2);
+                    buffer.flip();
+                    newBuffer.put(buffer);
+                    buffer = newBuffer;
+                }
+            }
+        }
+        
+        buffer.flip();
+        return buffer;
     }
 
     /**

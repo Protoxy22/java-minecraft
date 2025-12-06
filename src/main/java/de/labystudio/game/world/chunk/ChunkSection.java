@@ -1,11 +1,13 @@
 package de.labystudio.game.world.chunk;
 
-import de.labystudio.game.render.Tessellator;
+import de.labystudio.game.render.gl.ChunkMesh;
 import de.labystudio.game.util.EnumWorldBlockLayer;
 import de.labystudio.game.world.World;
 import de.labystudio.game.world.WorldRenderer;
 import de.labystudio.game.world.block.Block;
-import org.lwjgl.opengl.GL11;
+import org.lwjgl.system.MemoryUtil;
+
+import java.nio.FloatBuffer;
 
 public class ChunkSection {
     public static final int SIZE = 16;
@@ -19,7 +21,8 @@ public class ChunkSection {
     public int y;
     public int z;
 
-    private int lists = -1;
+    private ChunkMesh solidMesh;
+    private ChunkMesh cutoutMesh;
     private boolean queuedForRebuild = true;
 
     public ChunkSection(World world, int x, int y, int z) {
@@ -29,7 +32,8 @@ public class ChunkSection {
         this.y = y;
         this.z = z;
 
-        this.lists = GL11.glGenLists(EnumWorldBlockLayer.values().length);
+        this.solidMesh = new ChunkMesh();
+        this.cutoutMesh = new ChunkMesh();
 
         // Fill chunk with light
         for (int lightX = 0; lightX < SIZE; lightX++) {
@@ -43,8 +47,11 @@ public class ChunkSection {
     }
 
     public void render(EnumWorldBlockLayer renderLayer) {
-        // Call list with render layer
-        GL11.glCallList(this.lists + renderLayer.ordinal());
+        if (renderLayer == EnumWorldBlockLayer.SOLID) {
+            solidMesh.render();
+        } else {
+            cutoutMesh.render();
+        }
     }
 
     public void rebuild(WorldRenderer renderer) {
@@ -65,14 +72,10 @@ public class ChunkSection {
     }
 
     private void rebuild(WorldRenderer renderer, EnumWorldBlockLayer renderLayer) {
-        // Create GPU memory list storage
-        GL11.glNewList(this.lists + renderLayer.ordinal(), GL11.GL_COMPILE);
-        GL11.glEnable(GL11.GL_TEXTURE_2D);
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, renderer.textureId);
-
-        // Start rendering
-        Tessellator tessellator = Tessellator.instance;
-        tessellator.startDrawing(7);
+        // Create buffer for vertex data (estimate max size)
+        int maxVertices = SIZE * SIZE * SIZE * 6 * 6; // max vertices per chunk
+        FloatBuffer buffer = MemoryUtil.memAllocFloat(maxVertices * 9);
+        int vertexCount = 0;
 
         // Render blocks
         for (int x = 0; x < SIZE; x++) {
@@ -87,19 +90,31 @@ public class ChunkSection {
 
                         Block block = Block.getById(typeId);
                         if (block != null && ((renderLayer == EnumWorldBlockLayer.CUTOUT) == block.isTransparent())) {
-                            block.render(renderer, this.world, absoluteX, absoluteY, absoluteZ);
+                            vertexCount += renderer.getBlockRenderer().buildBlockMesh(
+                                    this.world, block, absoluteX, absoluteY, absoluteZ, buffer);
                         }
                     }
                 }
             }
         }
 
-        // Stop rendering
-        tessellator.draw();
+        // Upload to GPU
+        if (renderLayer == EnumWorldBlockLayer.SOLID) {
+            solidMesh.upload(buffer, vertexCount);
+        } else {
+            cutoutMesh.upload(buffer, vertexCount);
+        }
 
-        // End storage
-        GL11.glDisable(GL11.GL_TEXTURE_2D);
-        GL11.glEndList();
+        MemoryUtil.memFree(buffer);
+    }
+
+    public void delete() {
+        if (solidMesh != null) {
+            solidMesh.delete();
+        }
+        if (cutoutMesh != null) {
+            cutoutMesh.delete();
+        }
     }
 
     public boolean isEmpty() {

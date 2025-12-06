@@ -70,6 +70,6 @@ public abstract class Block {
     }
 
     public void render(WorldRenderer worldRenderer, IWorldAccess world, int x, int y, int z) {
-        worldRenderer.getBlockRenderer().renderBlock(world, this, x, y, z);
+//        worldRenderer.getBlockRenderer().renderBlock(world, this, x, y, z);
     }
 }
