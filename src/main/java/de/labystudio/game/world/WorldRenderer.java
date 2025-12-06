@@ -1,64 +1,79 @@
 package de.labystudio.game.world;
 
 import de.labystudio.game.render.Frustum;
-import de.labystudio.game.render.GLAllocation;
+import de.labystudio.game.render.gl.Camera;
+import de.labystudio.game.render.gl.Shader;
 import de.labystudio.game.render.world.BlockRenderer;
 import de.labystudio.game.util.EnumWorldBlockLayer;
 import de.labystudio.game.util.TextureManager;
 import de.labystudio.game.world.chunk.Chunk;
 import de.labystudio.game.world.chunk.ChunkSection;
-import org.lwjgl.opengl.GL11;
 
-import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+
+import static org.lwjgl.opengl.GL11.*;
 
 public class WorldRenderer {
 
     public static final int RENDER_DISTANCE = 8;
 
-    private final FloatBuffer colorBuffer = GLAllocation.createDirectFloatBuffer(16);
-    public final int textureId = TextureManager.loadTexture("/terrain.png", GL11.GL_NEAREST);
+    public final int textureId = TextureManager.loadTexture("/terrain.png", GL_NEAREST);
 
     private final World world;
 
     private final BlockRenderer blockRenderer = new BlockRenderer();
     private final Frustum frustum = new Frustum();
     private final List<ChunkSection> chunkSectionUpdateQueue = new ArrayList<>();
+    
+    private Shader worldShader;
+    private Camera camera;
+    
+    // Fog settings
+    private float fogStart;
+    private float fogEnd;
+    private float fogR = 0.6222222F - 0.05F;
+    private float fogG = 0.5F + 0.1F;
+    private float fogB = 1.0F;
+    private boolean fogEnabled = true;
 
     public WorldRenderer(World world) {
         this.world = world;
 
         // Sky color
-        GL11.glClearColor(0.6222222F - 0.05F, 0.5F + 0.1F, 1.0F, 0.0F);
-        GL11.glClearDepth(1.0D);
+        glClearColor(0.6222222F - 0.05F, 0.5F + 0.1F, 1.0F, 0.0F);
+        glClearDepth(1.0D);
 
         // Render methods
-        GL11.glEnable(GL11.GL_TEXTURE_2D);
-        GL11.glShadeModel(GL11.GL_SMOOTH);
-        GL11.glEnable(GL11.GL_DEPTH_TEST);
-        GL11.glDepthFunc(GL11.GL_LEQUAL);
-
-        // Matrix
-        GL11.glMatrixMode(GL11.GL_PROJECTION);
-        GL11.glLoadIdentity();
-        GL11.glMatrixMode(GL11.GL_MODELVIEW);
+        glEnable(GL_TEXTURE_2D);
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LEQUAL);
+        
+        // Load shader
+        worldShader = new Shader("/shaders/world.vert", "/shaders/world.frag");
+    }
+    
+    public void setCamera(Camera camera) {
+        this.camera = camera;
     }
 
     public void setupFog(boolean inWater) {
         if (inWater) {
-            GL11.glFogi(GL11.GL_FOG_MODE, GL11.GL_EXP);
-            GL11.glFogf(GL11.GL_FOG_DENSITY, 0.1F); // Fog distance
-            GL11.glFog(GL11.GL_FOG_COLOR, this.putColor(0.2F, 0.2F, 0.4F, 1.0F));
+            fogStart = 0;
+            fogEnd = 10.0F;
+            fogR = 0.2F;
+            fogG = 0.2F;
+            fogB = 0.4F;
         } else {
             int viewDistance = WorldRenderer.RENDER_DISTANCE * ChunkSection.SIZE;
-
-            GL11.glFogi(GL11.GL_FOG_MODE, GL11.GL_LINEAR);
-            GL11.glFogf(GL11.GL_FOG_START, viewDistance / 4.0F); // Fog start
-            GL11.glFogf(GL11.GL_FOG_END, viewDistance); // Fog end
-            GL11.glFog(GL11.GL_FOG_COLOR, this.putColor(0.6222222F - 0.05F, 0.5F + 0.1F, 1.0F, 1.0F));
+            fogStart = viewDistance / 4.0F;
+            fogEnd = viewDistance;
+            fogR = 0.6222222F - 0.05F;
+            fogG = 0.5F + 0.1F;
+            fogB = 1.0F;
         }
+        fogEnabled = true;
     }
 
     public void onTick() {
@@ -66,7 +81,26 @@ public class WorldRenderer {
     }
 
     public void render(int cameraChunkX, int cameraChunkZ, EnumWorldBlockLayer renderLayer) {
+        if (camera == null) {
+            return;
+        }
+        
+        this.frustum.setMatrices(camera.getProjectionMatrix(), camera.getViewMatrix());
         this.frustum.calculateFrustum();
+        
+        // Bind shader and set uniforms
+        worldShader.bind();
+        worldShader.setUniform("uProjection", camera.getProjectionMatrix());
+        worldShader.setUniform("uView", camera.getViewMatrix());
+        worldShader.setUniform("uModel", camera.getModelMatrix());
+        worldShader.setUniform("uTexture", 0);
+        worldShader.setUniform("uFogColor", fogR, fogG, fogB, 1.0f);
+        worldShader.setUniform("uFogStart", fogStart);
+        worldShader.setUniform("uFogEnd", fogEnd);
+        worldShader.setUniform("uFogEnabled", fogEnabled ? 1 : 0);
+        
+        // Bind texture
+        glBindTexture(GL_TEXTURE_2D, textureId);
 
         for (Chunk chunk : this.world.chunks.values()) {
             int distanceX = Math.abs(cameraChunkX - chunk.getX());
@@ -87,6 +121,8 @@ public class WorldRenderer {
                 }
             }
         }
+        
+        worldShader.unbind();
 
         // Sort update queue, chunk sections that are closer to the camera get a higher priority
         Collections.sort(this.chunkSectionUpdateQueue, (section1, section2) -> {
@@ -104,14 +140,13 @@ public class WorldRenderer {
         }
     }
 
-    private FloatBuffer putColor(float r, float g, float b, float a) {
-        this.colorBuffer.clear();
-        this.colorBuffer.put(r).put(g).put(b).put(a);
-        this.colorBuffer.flip();
-        return this.colorBuffer;
-    }
-
     public BlockRenderer getBlockRenderer() {
         return this.blockRenderer;
+    }
+    
+    public void cleanup() {
+        if (worldShader != null) {
+            worldShader.delete();
+        }
     }
 }
