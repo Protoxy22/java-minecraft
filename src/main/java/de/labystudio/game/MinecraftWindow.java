@@ -1,11 +1,14 @@
 package de.labystudio.game;
 
-import org.lwjgl.LWJGLException;
-import org.lwjgl.opengl.Display;
+import org.lwjgl.glfw.GLFW;
+import org.lwjgl.glfw.GLFWErrorCallback;
+import org.lwjgl.glfw.GLFWVidMode;
+import org.lwjgl.opengl.GL;
+import org.lwjgl.system.MemoryUtil;
 
-import java.awt.*;
-import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
+import static org.lwjgl.glfw.GLFW.*;
+import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.system.MemoryUtil.NULL;
 
 public class MinecraftWindow {
 
@@ -14,144 +17,138 @@ public class MinecraftWindow {
 
     private final Minecraft game;
 
-    protected final Canvas canvas;
-    protected final Frame frame;
-
     protected boolean fullscreen;
     protected boolean enableVsync;
 
     public int displayWidth = DEFAULT_WIDTH;
     public int displayHeight = DEFAULT_HEIGHT;
+    
+    private long window;
+    private boolean cursorGrabbed = false;
 
     public MinecraftWindow(Minecraft game) {
         this.game = game;
-
-        // Create canvas
-        this.canvas = new Canvas();
-        this.canvas.setPreferredSize(new Dimension(DEFAULT_WIDTH, DEFAULT_HEIGHT));
-
-        // Create frame
-        this.frame = new Frame("3DGame");
-        this.frame.setLayout(new BorderLayout());
-        this.frame.add(this.canvas, "Center");
-        this.frame.pack();
-        this.frame.setLocationRelativeTo(null);
-        this.frame.setVisible(true);
-
-        // Close listener
-        this.frame.addWindowListener(new WindowAdapter() {
-            @Override
-            public void windowClosing(WindowEvent e) {
-                game.shutdown();
-            }
-        });
     }
 
-    public void init() throws LWJGLException {
-        Graphics g = this.canvas.getGraphics();
-        if (g != null) {
-            g.setColor(Color.BLACK);
-            g.fillRect(0, 0, this.displayWidth, this.displayHeight);
-            g.dispose();
-        }
-        Display.setParent(this.canvas);
+    public void init() {
+        // Setup error callback
+        GLFWErrorCallback.createPrint(System.err).set();
 
-        // Init
-        Display.setTitle(this.frame.getTitle());
-
-        try {
-            Display.create();
-        } catch (LWJGLException lwjglexception) {
-            lwjglexception.printStackTrace();
-
-            // Try again in one second
-            try {
-                Thread.sleep(1000L);
-            } catch (InterruptedException ignored) {
-            }
-
-            Display.create();
+        // Initialize GLFW
+        if (!glfwInit()) {
+            throw new IllegalStateException("Unable to initialize GLFW");
         }
 
-        Display.swapBuffers();
+        // Configure GLFW
+        glfwDefaultWindowHints();
+        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+        glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+        
+        // Required for macOS
+        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+
+        // Create window
+        window = glfwCreateWindow(DEFAULT_WIDTH, DEFAULT_HEIGHT, "3DGame", NULL, NULL);
+        if (window == NULL) {
+            throw new RuntimeException("Failed to create GLFW window");
+        }
+
+        // Setup resize callback
+        glfwSetFramebufferSizeCallback(window, (window, width, height) -> {
+            displayWidth = width;
+            displayHeight = height;
+            if (displayWidth <= 0) displayWidth = 1;
+            if (displayHeight <= 0) displayHeight = 1;
+        });
+
+        // Center window
+        GLFWVidMode vidmode = glfwGetVideoMode(glfwGetPrimaryMonitor());
+        if (vidmode != null) {
+            glfwSetWindowPos(window, 
+                (vidmode.width() - DEFAULT_WIDTH) / 2,
+                (vidmode.height() - DEFAULT_HEIGHT) / 2);
+        }
+
+        // Make OpenGL context current
+        glfwMakeContextCurrent(window);
+        
+        // Enable v-sync
+        glfwSwapInterval(0);
+
+        // Show window
+        glfwShowWindow(window);
+        
+        // Initialize OpenGL bindings
+        GL.createCapabilities();
+        
+        // Get actual framebuffer size
+        int[] width = new int[1];
+        int[] height = new int[1];
+        glfwGetFramebufferSize(window, width, height);
+        displayWidth = width[0];
+        displayHeight = height[0];
     }
 
     public void toggleFullscreen() {
-        try {
-            this.fullscreen = !this.fullscreen;
-
-            System.out.println("Toggle fullscreen!");
-
-            if (this.fullscreen) {
-                Display.setDisplayMode(Display.getDesktopDisplayMode());
-
-                this.displayWidth = Display.getDisplayMode().getWidth();
-                this.displayHeight = Display.getDisplayMode().getHeight();
-
-                if (this.displayWidth <= 0) {
-                    this.displayWidth = 1;
-                }
-                if (this.displayHeight <= 0) {
-                    this.displayHeight = 1;
-                }
-            } else {
-                this.displayWidth = this.canvas.getWidth();
-                this.displayHeight = this.canvas.getHeight();
-
-                if (this.displayWidth <= 0) {
-                    this.displayWidth = 1;
-                }
-                if (this.displayHeight <= 0) {
-                    this.displayHeight = 1;
-                }
-
-                Display.setDisplayMode(new org.lwjgl.opengl.DisplayMode(DEFAULT_WIDTH, DEFAULT_HEIGHT));
+        fullscreen = !fullscreen;
+        
+        if (fullscreen) {
+            long monitor = glfwGetPrimaryMonitor();
+            GLFWVidMode mode = glfwGetVideoMode(monitor);
+            if (mode != null) {
+                glfwSetWindowMonitor(window, monitor, 0, 0, mode.width(), mode.height(), mode.refreshRate());
+                displayWidth = mode.width();
+                displayHeight = mode.height();
             }
-
-            Display.setFullscreen(this.fullscreen);
-            Display.update();
-
-            Thread.sleep(1000L);
-            System.out.println("Size: " + this.displayWidth + ", " + this.displayHeight);
-        } catch (Exception exception) {
-            exception.printStackTrace();
+        } else {
+            glfwSetWindowMonitor(window, NULL, 100, 100, DEFAULT_WIDTH, DEFAULT_HEIGHT, GLFW_DONT_CARE);
+            displayWidth = DEFAULT_WIDTH;
+            displayHeight = DEFAULT_HEIGHT;
         }
     }
 
     public void update() {
-        Display.update();
-
-        if (!this.fullscreen && (this.canvas.getWidth() != this.displayWidth || this.canvas.getHeight() != this.displayHeight)) {
-            this.displayWidth = this.canvas.getWidth();
-            this.displayHeight = this.canvas.getHeight();
-
-            if (this.displayWidth <= 0) {
-                this.displayWidth = 1;
-            }
-
-            if (this.displayHeight <= 0) {
-                this.displayHeight = 1;
-            }
-
-            this.resize(this.displayWidth, this.displayHeight);
-        }
-    }
-
-    private void resize(int width, int height) {
-        if (width <= 0) {
-            width = 1;
-        }
-        if (height <= 0) {
-            height = 1;
-        }
-
-        this.displayWidth = width;
-        this.displayHeight = height;
-
-        this.game.gui.init(this);
+        glfwSwapBuffers(window);
+        glfwPollEvents();
     }
 
     public void destroy() {
-        Display.destroy();
+        glfwDestroyWindow(window);
+        glfwTerminate();
+        GLFWErrorCallback callback = glfwSetErrorCallback(null);
+        if (callback != null) {
+            callback.free();
+        }
+    }
+    
+    public boolean shouldClose() {
+        return glfwWindowShouldClose(window);
+    }
+    
+    public long getWindow() {
+        return window;
+    }
+    
+    public void setCursorGrabbed(boolean grabbed) {
+        if (cursorGrabbed != grabbed) {
+            cursorGrabbed = grabbed;
+            glfwSetInputMode(window, GLFW_CURSOR, grabbed ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+            
+            // Reset cursor position when grabbing to avoid jumps
+            if (grabbed) {
+                glfwSetCursorPos(window, displayWidth / 2.0, displayHeight / 2.0);
+            }
+        }
+    }
+    
+    public boolean isCursorGrabbed() {
+        return cursorGrabbed;
+    }
+    
+    public boolean isWindowFocused() {
+        return glfwGetWindowAttrib(window, GLFW_FOCUSED) == GLFW_TRUE;
     }
 }

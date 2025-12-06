@@ -1,21 +1,101 @@
 plugins {
     id 'java'
+    id 'application'
 }
 
 group 'de.labystudio'
 version '1.0-SNAPSHOT'
 
+java {
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
 repositories {
     mavenCentral()
-
     maven { url 'https://jitpack.io' }
 }
 
+project.ext.lwjglVersion = '3.4.0'
+project.ext.jomlVersion = '1.10.5'
+
+// Determine the native classifier based on the OS
+project.ext.lwjglNatives = {
+    def osName = System.getProperty('os.name').toLowerCase()
+    def osArch = System.getProperty('os.arch').toLowerCase()
+    
+    if (osName.contains('win')) {
+        return osArch.contains('64') ? 'windows' : 'windows-x86'
+    } else if (osName.contains('nix') || osName.contains('nux')) {
+        return osArch.contains('arm') || osArch.contains('aarch64') ? 
+            (osArch.contains('64') ? 'linux-arm64' : 'linux-arm32') : 'linux'
+    } else if (osName.contains('mac')) {
+        return osArch.contains('aarch64') || osArch.contains('arm') ? 'macos-arm64' : 'macos'
+    }
+    return 'linux' // fallback
+}()
+
 dependencies {
-    compile group: 'org.lwjgl.lwjgl', name: 'lwjgl', version: '2.9.3'
-    compile group: 'org.lwjgl.lwjgl', name: 'lwjgl_util', version: '2.9.3'
-    compile group: 'org.lwjgl.lwjgl', name: 'lwjgl-platform', version: '2.9.3', ext: 'pom'
+    // LWJGL 3.4.0 core modules
+    implementation platform("org.lwjgl:lwjgl-bom:$lwjglVersion")
+    implementation "org.lwjgl:lwjgl"
+    implementation "org.lwjgl:lwjgl-glfw"
+    implementation "org.lwjgl:lwjgl-opengl"
+    implementation "org.lwjgl:lwjgl-stb"
+    
+    // JOML for matrix math
+    implementation "org.joml:joml:$jomlVersion"
+    
+    // LWJGL natives for all platforms
+    runtimeOnly "org.lwjgl:lwjgl::natives-windows"
+    runtimeOnly "org.lwjgl:lwjgl::natives-windows-x86"
+    runtimeOnly "org.lwjgl:lwjgl::natives-linux"
+    runtimeOnly "org.lwjgl:lwjgl::natives-linux-arm64"
+    runtimeOnly "org.lwjgl:lwjgl::natives-linux-arm32"
+    runtimeOnly "org.lwjgl:lwjgl::natives-macos"
+    runtimeOnly "org.lwjgl:lwjgl::natives-macos-arm64"
+    
+    runtimeOnly "org.lwjgl:lwjgl-glfw::natives-windows"
+    runtimeOnly "org.lwjgl:lwjgl-glfw::natives-windows-x86"
+    runtimeOnly "org.lwjgl:lwjgl-glfw::natives-linux"
+    runtimeOnly "org.lwjgl:lwjgl-glfw::natives-linux-arm64"
+    runtimeOnly "org.lwjgl:lwjgl-glfw::natives-linux-arm32"
+    runtimeOnly "org.lwjgl:lwjgl-glfw::natives-macos"
+    runtimeOnly "org.lwjgl:lwjgl-glfw::natives-macos-arm64"
+    
+    runtimeOnly "org.lwjgl:lwjgl-opengl::natives-windows"
+    runtimeOnly "org.lwjgl:lwjgl-opengl::natives-windows-x86"
+    runtimeOnly "org.lwjgl:lwjgl-opengl::natives-linux"
+    runtimeOnly "org.lwjgl:lwjgl-opengl::natives-linux-arm64"
+    runtimeOnly "org.lwjgl:lwjgl-opengl::natives-linux-arm32"
+    runtimeOnly "org.lwjgl:lwjgl-opengl::natives-macos"
+    runtimeOnly "org.lwjgl:lwjgl-opengl::natives-macos-arm64"
+    
+    runtimeOnly "org.lwjgl:lwjgl-stb::natives-windows"
+    runtimeOnly "org.lwjgl:lwjgl-stb::natives-windows-x86"
+    runtimeOnly "org.lwjgl:lwjgl-stb::natives-linux"
+    runtimeOnly "org.lwjgl:lwjgl-stb::natives-linux-arm64"
+    runtimeOnly "org.lwjgl:lwjgl-stb::natives-linux-arm32"
+    runtimeOnly "org.lwjgl:lwjgl-stb::natives-macos"
+    runtimeOnly "org.lwjgl:lwjgl-stb::natives-macos-arm64"
 
     // NBT
     implementation 'com.github.Steveice10:opennbt:1.3'
+}
+
+application {
+    mainClass = 'de.labystudio.game.Minecraft'
+    applicationDefaultJvmArgs = ['-XstartOnFirstThread'] // Required for macOS
+}
+
+// Task to run the game
+task runGame(type: JavaExec) {
+    mainClass = 'de.labystudio.game.Minecraft'
+    classpath = sourceSets.main.runtimeClasspath
+    workingDir = file('run')
+    
+    // macOS specific
+    if (System.getProperty('os.name').toLowerCase().contains('mac')) {
+        jvmArgs '-XstartOnFirstThread'
+    }
 }
