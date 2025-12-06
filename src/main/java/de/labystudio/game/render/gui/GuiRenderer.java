@@ -7,6 +7,8 @@ import de.labystudio.game.util.TextureManager;
 import org.joml.Matrix4f;
 
 import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL13.GL_TEXTURE0;
+import static org.lwjgl.opengl.GL13.glActiveTexture;
 
 public class GuiRenderer {
 
@@ -18,15 +20,21 @@ public class GuiRenderer {
     private int height;
     
     private Shader guiShader;
-    private Matrix4f projectionMatrix;
+    private Matrix4f projectionMatrix = new Matrix4f();
+
+    private MinecraftWindow gameWindow;
 
     public void loadTextures() {
         this.textureId = TextureManager.loadTexture("/icons.png", GL_NEAREST);
         this.guiShader = new Shader("/shaders/gui.vert", "/shaders/gui.frag");
-        this.projectionMatrix = new Matrix4f();
     }
 
     public void init(MinecraftWindow gameWindow) {
+        this.gameWindow = gameWindow;
+        updateDimensions();
+    }
+
+    private void updateDimensions() {
         this.width = gameWindow.displayWidth;
         this.height = gameWindow.displayHeight;
         for (this.scaleFactor = 1; this.width / (this.scaleFactor + 1) >= 320 && this.height / (this.scaleFactor + 1) >= 240; this.scaleFactor++) {
@@ -44,15 +52,14 @@ public class GuiRenderer {
     }
 
     public void setupCamera() {
-        // Update projection in case window was resized
-        updateProjection();
+        // Recalculate dimensions in case window was resized
+        updateDimensions();
     }
-
     public void renderCrosshair() {
         glEnable(GL_BLEND);
-        glBlendFunc(GL_ONE_MINUS_DST_COLOR, GL_ONE_MINUS_SRC_COLOR);
-        glEnable(GL_TEXTURE_2D);
-        glBindTexture(GL_TEXTURE_2D, this.textureId);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glActiveTexture(GL_TEXTURE0);
+        TextureManager.bind(this.textureId);
         
         // Use gui shader
         guiShader.bind();
@@ -60,16 +67,28 @@ public class GuiRenderer {
         guiShader.setUniform("uTexture", 0);
         guiShader.setUniform("uUseTexture", 1);
         
-        this.drawTexturedModalRect(this.width / 2 - 7, this.height / 2 - 7, 0, 0, 16, 16);
+        this.drawTexturedModalRect(this.width / 2 - 8, this.height / 2 - 8, 0, 0, 16, 16);
         
         guiShader.unbind();
 
         glDisable(GL_BLEND);
     }
 
+    public void beginFontRendering() {
+        guiShader.bind();
+        guiShader.setUniform("uProjection", projectionMatrix);
+        guiShader.setUniform("uTexture", 0);
+        guiShader.setUniform("uUseTexture", 1);
+    }
+
+    public void endFontRendering() {
+        guiShader.unbind();
+    }
+
     public void drawTexturedModalRect(int left, int top, int offsetX, int offsetY, int width, int height) {
         MeshBuilder builder = MeshBuilder.instance;
         builder.begin();
+        builder.color(1, 1, 1, 1);
         this.drawTexturedModalRect(builder, left, top, offsetX, offsetY, width, height, width, height, 256, 256);
         builder.end();
         builder.draw();
@@ -82,8 +101,7 @@ public class GuiRenderer {
 
         float factorX = 1.0F / bitMapWidth;
         float factorY = 1.0F / bitmapHeight;
-        
-        builder.color(1, 1, 1, 1);
+
 
         // Triangle 1
         builder.pos(x, y + height, 0);

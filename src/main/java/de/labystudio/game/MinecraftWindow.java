@@ -12,8 +12,8 @@ import static org.lwjgl.system.MemoryUtil.NULL;
 
 public class MinecraftWindow {
 
-    public static final int DEFAULT_WIDTH = 854;
-    public static final int DEFAULT_HEIGHT = 480;
+    public static final int DEFAULT_WIDTH = 1280;
+    public static final int DEFAULT_HEIGHT = 720;
 
     private final Minecraft game;
 
@@ -33,6 +33,7 @@ public class MinecraftWindow {
     public void init() {
         // Setup error callback
         GLFWErrorCallback.createPrint(System.err).set();
+        glfwInitHint(GLFW_PLATFORM, GLFW_PLATFORM_X11);  // do this BEFORE glfwInit()
 
         // Initialize GLFW
         if (!glfwInit()) {
@@ -51,7 +52,7 @@ public class MinecraftWindow {
         glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
 
         // Create window
-        window = glfwCreateWindow(DEFAULT_WIDTH, DEFAULT_HEIGHT, "3DGame", NULL, NULL);
+        window = glfwCreateWindow(DEFAULT_WIDTH, DEFAULT_HEIGHT, "3DGame", 0, NULL);
         if (window == NULL) {
             throw new RuntimeException("Failed to create GLFW window");
         }
@@ -64,32 +65,49 @@ public class MinecraftWindow {
             if (displayHeight <= 0) displayHeight = 1;
         });
 
-        // Center window
-        GLFWVidMode vidmode = glfwGetVideoMode(glfwGetPrimaryMonitor());
+        // Setup mouse button callback to grab cursor on click
+        glfwSetMouseButtonCallback(window, (win, button, action, mods) -> {
+            if (action == GLFW_PRESS && !cursorGrabbed) {
+                setCursorGrabbed(true);
+            }
+        });
+
+        // Center window on the current/focused monitor
+        long monitor = glfwGetPrimaryMonitor();
+        int[] monitorX = new int[1];
+        int[] monitorY = new int[1];
+        glfwGetMonitorPos(monitor, monitorX, monitorY);
+        GLFWVidMode vidmode = glfwGetVideoMode(monitor);
         if (vidmode != null) {
             glfwSetWindowPos(window, 
-                (vidmode.width() - DEFAULT_WIDTH) / 2,
-                (vidmode.height() - DEFAULT_HEIGHT) / 2);
+                monitorX[0] + (vidmode.width() - DEFAULT_WIDTH) / 2,
+                monitorY[0] + (vidmode.height() - DEFAULT_HEIGHT) / 2);
         }
 
         // Make OpenGL context current
         glfwMakeContextCurrent(window);
         
+        // Initialize OpenGL bindings (must be done before any GL calls)
+        GL.createCapabilities();
+
         // Enable v-sync
         glfwSwapInterval(0);
 
-        // Show window
-        glfwShowWindow(window);
-        
-        // Initialize OpenGL bindings
-        GL.createCapabilities();
-        
         // Get actual framebuffer size
         int[] width = new int[1];
         int[] height = new int[1];
         glfwGetFramebufferSize(window, width, height);
         displayWidth = width[0];
         displayHeight = height[0];
+
+        // Show window
+        glfwShowWindow(window);
+
+        // Poll events once to ensure window is properly initialized on Linux
+        glfwPollEvents();
+
+        // Swap buffers once to clear any garbage in the framebuffer
+        glfwSwapBuffers(window);
     }
 
     public void toggleFullscreen() {

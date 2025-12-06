@@ -1,6 +1,7 @@
 plugins {
     id 'java'
     id 'application'
+    id 'com.github.johnrengelman.shadow' version '6.1.0'
 }
 
 group 'de.labystudio'
@@ -11,73 +12,36 @@ java {
     targetCompatibility = JavaVersion.VERSION_11
 }
 
+project.ext.lwjglVersion = "3.4.0-SNAPSHOT"
+project.ext.jomlVersion = "1.10.8"
+
 repositories {
     mavenCentral()
+    maven { url "https://central.sonatype.com/repository/maven-snapshots" }
     maven { url 'https://jitpack.io' }
 }
 
-project.ext.lwjglVersion = '3.4.0'
-project.ext.jomlVersion = '1.10.5'
-
-// Determine the native classifier based on the OS
-project.ext.lwjglNatives = {
-    def osName = System.getProperty('os.name').toLowerCase()
-    def osArch = System.getProperty('os.arch').toLowerCase()
-    
-    if (osName.contains('win')) {
-        return osArch.contains('64') ? 'windows' : 'windows-x86'
-    } else if (osName.contains('nix') || osName.contains('nux')) {
-        return osArch.contains('arm') || osArch.contains('aarch64') ? 
-            (osArch.contains('64') ? 'linux-arm64' : 'linux-arm32') : 'linux'
-    } else if (osName.contains('mac')) {
-        return osArch.contains('aarch64') || osArch.contains('arm') ? 'macos-arm64' : 'macos'
-    }
-    return 'linux' // fallback
-}()
-
 dependencies {
-    // LWJGL 3.4.0 core modules
     implementation platform("org.lwjgl:lwjgl-bom:$lwjglVersion")
+
     implementation "org.lwjgl:lwjgl"
     implementation "org.lwjgl:lwjgl-glfw"
     implementation "org.lwjgl:lwjgl-opengl"
     implementation "org.lwjgl:lwjgl-stb"
-    
-    // JOML for matrix math
-    implementation "org.joml:joml:$jomlVersion"
-    
-    // LWJGL natives for all platforms
-    runtimeOnly "org.lwjgl:lwjgl::natives-windows"
-    runtimeOnly "org.lwjgl:lwjgl::natives-windows-x86"
-    runtimeOnly "org.lwjgl:lwjgl::natives-linux"
-    runtimeOnly "org.lwjgl:lwjgl::natives-linux-arm64"
-    runtimeOnly "org.lwjgl:lwjgl::natives-linux-arm32"
-    runtimeOnly "org.lwjgl:lwjgl::natives-macos"
-    runtimeOnly "org.lwjgl:lwjgl::natives-macos-arm64"
-    
-    runtimeOnly "org.lwjgl:lwjgl-glfw::natives-windows"
-    runtimeOnly "org.lwjgl:lwjgl-glfw::natives-windows-x86"
-    runtimeOnly "org.lwjgl:lwjgl-glfw::natives-linux"
-    runtimeOnly "org.lwjgl:lwjgl-glfw::natives-linux-arm64"
-    runtimeOnly "org.lwjgl:lwjgl-glfw::natives-linux-arm32"
-    runtimeOnly "org.lwjgl:lwjgl-glfw::natives-macos"
-    runtimeOnly "org.lwjgl:lwjgl-glfw::natives-macos-arm64"
-    
-    runtimeOnly "org.lwjgl:lwjgl-opengl::natives-windows"
-    runtimeOnly "org.lwjgl:lwjgl-opengl::natives-windows-x86"
-    runtimeOnly "org.lwjgl:lwjgl-opengl::natives-linux"
-    runtimeOnly "org.lwjgl:lwjgl-opengl::natives-linux-arm64"
-    runtimeOnly "org.lwjgl:lwjgl-opengl::natives-linux-arm32"
-    runtimeOnly "org.lwjgl:lwjgl-opengl::natives-macos"
-    runtimeOnly "org.lwjgl:lwjgl-opengl::natives-macos-arm64"
-    
-    runtimeOnly "org.lwjgl:lwjgl-stb::natives-windows"
-    runtimeOnly "org.lwjgl:lwjgl-stb::natives-windows-x86"
-    runtimeOnly "org.lwjgl:lwjgl-stb::natives-linux"
-    runtimeOnly "org.lwjgl:lwjgl-stb::natives-linux-arm64"
-    runtimeOnly "org.lwjgl:lwjgl-stb::natives-linux-arm32"
-    runtimeOnly "org.lwjgl:lwjgl-stb::natives-macos"
-    runtimeOnly "org.lwjgl:lwjgl-stb::natives-macos-arm64"
+
+    // Linux natives
+    implementation "org.lwjgl:lwjgl::natives-linux"
+    implementation "org.lwjgl:lwjgl-glfw::natives-linux"
+    implementation "org.lwjgl:lwjgl-opengl::natives-linux"
+    implementation "org.lwjgl:lwjgl-stb::natives-linux"
+
+    // Windows natives
+    implementation "org.lwjgl:lwjgl::natives-windows"
+    implementation "org.lwjgl:lwjgl-glfw::natives-windows"
+    implementation "org.lwjgl:lwjgl-opengl::natives-windows"
+    implementation "org.lwjgl:lwjgl-stb::natives-windows"
+
+    implementation "org.joml:joml:${jomlVersion}"
 
     // NBT
     implementation 'com.github.Steveice10:opennbt:1.3'
@@ -85,7 +49,28 @@ dependencies {
 
 application {
     mainClass = 'de.labystudio.game.Minecraft'
-    applicationDefaultJvmArgs = ['-XstartOnFirstThread'] // Required for macOS
+//    applicationDefaultJvmArgs = ['-XstartOnFirstThread'] // Required for macOS
+}
+
+jar {
+    manifest {
+        attributes 'Main-Class': 'de.labystudio.game.Minecraft'
+    }
+}
+
+shadowJar {
+    archiveBaseName.set('java-minecraft')
+    archiveClassifier.set('all')
+    archiveVersion.set(project.version.toString())
+
+    manifest {
+        attributes 'Main-Class': 'de.labystudio.game.Minecraft'
+    }
+
+    mergeServiceFiles()
+
+    // Fix for shadow plugin compatibility
+    mainClassName = 'de.labystudio.game.Minecraft'
 }
 
 // Task to run the game

@@ -78,7 +78,7 @@ public class Player {
 
     public void turn(float xo, float yo) {
         this.yaw = ((float) (this.yaw + xo * 0.15D));
-        this.pitch = ((float) (this.pitch - yo * 0.15D));
+        this.pitch = ((float) (this.pitch + yo * 0.15D));
         if (this.pitch < -90.0F) {
             this.pitch = -90.0F;
         }

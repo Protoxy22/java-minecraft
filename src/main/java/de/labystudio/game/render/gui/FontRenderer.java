@@ -8,6 +8,8 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 
 import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL13.GL_TEXTURE0;
+import static org.lwjgl.opengl.GL13.glActiveTexture;
 
 public class FontRenderer {
 
@@ -68,9 +70,16 @@ public class FontRenderer {
     }
 
     private void drawStringRaw(String string, int x, int y, int color, boolean isShadow) {
+        // Setup blending for text
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        
         // Setup texture
-        glEnable(GL_TEXTURE_2D);
+        glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, this.fontTextureId);
+
+        // Use gui shader for font rendering
+        this.gui.beginFontRendering();
 
         // Start rendering
         this.meshBuilder.begin();
@@ -113,7 +122,8 @@ public class FontRenderer {
         // Finish drawing
         this.meshBuilder.end();
         this.meshBuilder.draw();
-        glDisable(GL_TEXTURE_2D);
+
+        this.gui.endFontRendering();
     }
 
     public int getColorOfCharacter(char character) {
