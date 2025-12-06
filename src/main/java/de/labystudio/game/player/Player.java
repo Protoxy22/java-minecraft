@@ -1,15 +1,18 @@
 package de.labystudio.game.player;
 
+import de.labystudio.game.input.Input;
 import de.labystudio.game.util.BoundingBox;
 import de.labystudio.game.world.World;
 import de.labystudio.game.world.block.Block;
-import org.lwjgl.input.Keyboard;
 
 import java.util.List;
+
+import static org.lwjgl.glfw.GLFW.*;
 
 public class Player {
 
     private final World world;
+    private Input input;
 
     public double prevX;
     public double prevY;
@@ -54,6 +57,10 @@ public class Player {
     public Player(World world) {
         this.world = world;
         this.resetPos();
+    }
+    
+    public void setInput(Input input) {
+        this.input = input;
     }
 
     private void resetPos() {
@@ -299,38 +306,42 @@ public class Player {
     }
 
     public void updateKeyboardInput() {
+        if (input == null) {
+            return;
+        }
+        
         float moveForward = 0.0F;
         float moveStrafe = 0.0F;
 
         boolean jumping = false;
         boolean sneaking = false;
 
-        if (Keyboard.isKeyDown(19)) { // R
+        if (input.isKeyDown(GLFW_KEY_R)) { // R
             this.resetPos();
         }
-        if ((Keyboard.isKeyDown(200)) || (Keyboard.isKeyDown(17))) { // W
+        if (input.isKeyDown(GLFW_KEY_W) || input.isKeyDown(GLFW_KEY_UP)) { // W
             moveForward++;
         }
-        if ((Keyboard.isKeyDown(208)) || (Keyboard.isKeyDown(31))) { // S
+        if (input.isKeyDown(GLFW_KEY_S) || input.isKeyDown(GLFW_KEY_DOWN)) { // S
             moveForward--;
         }
-        if ((Keyboard.isKeyDown(203)) || (Keyboard.isKeyDown(30))) { // A
+        if (input.isKeyDown(GLFW_KEY_A) || input.isKeyDown(GLFW_KEY_LEFT)) { // A
             moveStrafe++;
         }
-        if ((Keyboard.isKeyDown(205)) || (Keyboard.isKeyDown(32))) { // D
+        if (input.isKeyDown(GLFW_KEY_D) || input.isKeyDown(GLFW_KEY_RIGHT)) { // D
             moveStrafe--;
         }
-        if ((Keyboard.isKeyDown(57)) || (Keyboard.isKeyDown(219))) { // Space
+        if (input.isKeyDown(GLFW_KEY_SPACE)) { // Space
             jumping = true;
         }
-        if (Keyboard.isKeyDown(42)) { // Shift
+        if (input.isKeyDown(GLFW_KEY_LEFT_SHIFT)) { // Shift
             if (this.moveForward > 0 && !this.sneaking && !this.sprinting && this.motionX != 0 && this.motionZ != 0) {
                 this.sprinting = true;
 
                 this.updateFOVModifier();
             }
         }
-        if (Keyboard.isKeyDown(16)) { // Q
+        if (input.isKeyDown(GLFW_KEY_Q)) { // Q
             sneaking = true;
         }
 

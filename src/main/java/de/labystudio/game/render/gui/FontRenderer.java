@@ -1,12 +1,13 @@
 package de.labystudio.game.render.gui;
 
-import de.labystudio.game.render.Tessellator;
+import de.labystudio.game.render.gl.MeshBuilder;
 import de.labystudio.game.util.TextureManager;
-import org.lwjgl.opengl.GL11;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+
+import static org.lwjgl.opengl.GL11.*;
 
 public class FontRenderer {
 
@@ -16,7 +17,7 @@ public class FontRenderer {
     private static final String COLOR_CODE_INDEX_LOOKUP = "0123456789abcdef";
 
     private final GuiRenderer gui;
-    private final Tessellator tessellator = Tessellator.instance;
+    private final MeshBuilder meshBuilder = MeshBuilder.instance;
 
     private final int[] charWidths = new int[256];
     private final int fontTextureId;
@@ -32,7 +33,7 @@ public class FontRenderer {
         }
 
         // Load texture
-        this.fontTextureId = TextureManager.loadTexture(name, GL11.GL_NEAREST);
+        this.fontTextureId = TextureManager.loadTexture(name, GL_NEAREST);
     }
 
     private int calculateCharacterWidthAt(BufferedImage bitMap, int indexX, int indexY) {
@@ -68,11 +69,11 @@ public class FontRenderer {
 
     private void drawStringRaw(String string, int x, int y, int color, boolean isShadow) {
         // Setup texture
-        GL11.glEnable(GL11.GL_TEXTURE_2D);
-        GL11.glBindTexture(GL11.GL_TEXTURE_2D, this.fontTextureId);
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, this.fontTextureId);
 
         // Start rendering
-        this.tessellator.startDrawingQuads();
+        this.meshBuilder.begin();
         this.setColor(color, isShadow);
 
         char[] chars = string.toCharArray();
@@ -99,7 +100,7 @@ public class FontRenderer {
             int textureOffsetY = chars[i] / BITMAP_SIZE * FIELD_SIZE;
 
             // Draw character
-            this.gui.drawTexturedModalRect(this.tessellator, x, y,
+            this.gui.drawTexturedModalRect(this.meshBuilder, x, y,
                     textureOffsetX, textureOffsetY,
                     FIELD_SIZE, FIELD_SIZE,
                     FIELD_SIZE, FIELD_SIZE,
@@ -110,8 +111,9 @@ public class FontRenderer {
         }
 
         // Finish drawing
-        this.tessellator.draw();
-        GL11.glDisable(GL11.GL_TEXTURE_2D);
+        this.meshBuilder.end();
+        this.meshBuilder.draw();
+        glDisable(GL_TEXTURE_2D);
     }
 
     public int getColorOfCharacter(char character) {
@@ -127,7 +129,11 @@ public class FontRenderer {
     }
 
     private void setColor(int color, boolean isShadow) {
-        this.tessellator.setColorOpaque_I(isShadow ? (color & 0xFCFCFC) >> 2 : color);
+        int finalColor = isShadow ? (color & 0xFCFCFC) >> 2 : color;
+        int r = (finalColor >> 16) & 0xFF;
+        int g = (finalColor >> 8) & 0xFF;
+        int b = finalColor & 0xFF;
+        this.meshBuilder.color(r, g, b, 255);
     }
 
     public int getStringWidth(String string) {
